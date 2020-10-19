@@ -65,7 +65,7 @@ IVF::Load(const BinarySet& binary_set) {
 
 void
 IVF::Train(const DatasetPtr& dataset_ptr, const Config& config) {
-    LOG_KNOWHERE_DEBUG_ << "ivf train begin";
+    LOG_KNOWHERE_DEBUG_ << "index ivf train begin";
     GET_TENSOR_DATA_DIM(dataset_ptr)
 
     LOG_KNOWHERE_DEBUG_ << "get tensor data dim";
