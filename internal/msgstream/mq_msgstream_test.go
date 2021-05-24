@@ -581,7 +581,7 @@ func TestStream_PulsarTtMsgStream_Insert(t *testing.T) {
 	outputStream.Close()
 }
 
-func TestStream_PulsarTtMsgStream_Seek(t *testing.T) {
+func TestStream_PulsarTtMsgStream_Seek2(t *testing.T) {
 	pulsarAddress, _ := Params.Load("_PulsarAddress")
 	c1, c2 := funcutil.RandomString(8), funcutil.RandomString(8)
 	producerChannels := []string{c1, c2}
@@ -599,6 +599,7 @@ func TestStream_PulsarTtMsgStream_Seek(t *testing.T) {
 	msgPack2.Msgs = append(msgPack2.Msgs, getTimeTickMsg(5, 5, 5))
 
 	msgPack3 := MsgPack{}
+	msgPack3.Msgs = append(msgPack3.Msgs, getTsMsg(commonpb.MsgType_Insert, 13, 13))
 	msgPack3.Msgs = append(msgPack3.Msgs, getTsMsg(commonpb.MsgType_Insert, 14, 14))
 	msgPack3.Msgs = append(msgPack3.Msgs, getTsMsg(commonpb.MsgType_Insert, 9, 9))
 
@@ -622,17 +623,31 @@ func TestStream_PulsarTtMsgStream_Seek(t *testing.T) {
 
 	outputStream.Consume()
 	receivedMsg := outputStream.Consume()
-	for _, position := range receivedMsg.StartPositions {
-		outputStream.Seek(position)
-	}
+	outputStream.Close()
+
 	err = inputStream.Broadcast(&msgPack5)
 	assert.Nil(t, err)
-	//seekMsg, _ := outputStream.Consume()
-	//for _, msg := range seekMsg.Msgs {
-	//	assert.Equal(t, msg.BeginTs(), uint64(14))
-	//}
+
+	factory := ProtoUDFactory{}
+	// set output stream
+	pulsarClient2, _ := mqclient.NewPulsarClient(pulsar.ClientOptions{URL: pulsarAddress})
+	outputStream2, _ := NewMqTtMsgStream(context.Background(), 100, 100, pulsarClient2, factory.NewUnmarshalDispatcher())
+	outputStream2.AsConsumer(consumerChannels, consumerSubName)
+	outputStream2.Start()
+	var output2 MsgStream = outputStream2
+
+	for _, position := range receivedMsg.StartPositions {
+		output2.Seek(position)
+	}
+	seekMsg := output2.Consume()
+	assert.Equal(t, len(seekMsg.Msgs), 2)
+	/*
+		for _, msg := range seekMsg.Msgs {
+			assert.Equal(t, msg.BeginTs(), uint64(14))
+		}
+	*/
 	inputStream.Close()
-	outputStream.Close()
+	output2.Close()
 }
 
 func TestStream_PulsarTtMsgStream_UnMarshalHeader(t *testing.T) {
