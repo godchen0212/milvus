@@ -59,39 +59,30 @@ func NewClient(ctx context.Context, addr string, retryOptions ...retry.Option) (
 }
 
 func (c *Client) Init() error {
-	return c.connect(retry.Attempts(20))
+	return c.connect()
 }
 
 func (c *Client) connect(retryOptions ...retry.Option) error {
-	connectGrpcFunc := func() error {
-		opts := trace.GetInterceptorOpts()
-		log.Debug("DataNode connect ", zap.String("address", c.addr))
-		conn, err := grpc.DialContext(c.ctx, c.addr,
-			grpc.WithInsecure(), grpc.WithBlock(), grpc.WithTimeout(2*time.Second),
-			grpc.WithUnaryInterceptor(
-				grpc_middleware.ChainUnaryClient(
-					grpc_retry.UnaryClientInterceptor(),
-					grpc_opentracing.UnaryClientInterceptor(opts...),
-				)),
-			grpc.WithStreamInterceptor(
-				grpc_middleware.ChainStreamClient(
-					grpc_retry.StreamClientInterceptor(),
-					grpc_opentracing.StreamClientInterceptor(opts...),
-				)),
-		)
-		if err != nil {
-			return err
-		}
-		c.conn = conn
-		return nil
-	}
-
-	err := retry.Do(c.ctx, connectGrpcFunc, retryOptions...)
+	opts := trace.GetInterceptorOpts()
+	log.Debug("DataNode connect ", zap.String("address", c.addr))
+	conn, err := grpc.DialContext(c.ctx, c.addr,
+		grpc.WithInsecure(), grpc.WithBlock(), grpc.WithTimeout(2*time.Second),
+		grpc.WithUnaryInterceptor(
+			grpc_middleware.ChainUnaryClient(
+				grpc_retry.UnaryClientInterceptor(),
+				grpc_opentracing.UnaryClientInterceptor(opts...),
+			)),
+		grpc.WithStreamInterceptor(
+			grpc_middleware.ChainStreamClient(
+				grpc_retry.StreamClientInterceptor(),
+				grpc_opentracing.StreamClientInterceptor(opts...),
+			)),
+	)
 	if err != nil {
-		log.Debug("DataNodeClient try connect failed", zap.Error(err))
 		return err
 	}
-	log.Debug("DataNodeClient connect success")
+	c.conn = conn
+
 	c.grpc = datapb.NewDataNodeClient(c.conn)
 	return nil
 }
@@ -101,7 +92,14 @@ func (c *Client) recall(caller func() (interface{}, error)) (interface{}, error)
 	if err == nil {
 		return ret, nil
 	}
-	err = c.connect()
+	connectGrpcFunc := func() error {
+		return c.connect()
+	}
+	err = retry.Do(c.ctx, connectGrpcFunc)
+	if err != nil {
+		log.Debug("DataNodeClient try connect failed", zap.Error(err))
+		return ret, err
+	}
 	if err != nil {
 		return ret, err
 	}
